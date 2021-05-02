@@ -15,21 +15,22 @@ use panic_halt as _;
 // ╔═══════════╦══════════════╦═══════════════════╗
 // ║ PRESCALER ║ TIMER_COUNTS ║ Overflow Interval ║
 // ╠═══════════╬══════════════╬═══════════════════╣
+// ║         8 ║            2 ║              1 us ║
 // ║        64 ║          250 ║              1 ms ║
 // ║       256 ║          125 ║              2 ms ║
 // ║       256 ║          250 ║              4 ms ║
 // ║      1024 ║          125 ║              8 ms ║
 // ║      1024 ║          250 ║             16 ms ║
 // ╚═══════════╩══════════════╩═══════════════════╝
-const PRESCALER: u32 = 1024;
-const TIMER_COUNTS: u32 = 125;
+const PRESCALER: u32 = 8;
+const TIMER_COUNTS: u32 = 2;
 
-const MILLIS_INCREMENT: u32 = PRESCALER * TIMER_COUNTS / 16000;
+const MICROS_INCREMENT: u32 = PRESCALER * TIMER_COUNTS / 16;
 
-static MILLIS_COUNTER: avr_device::interrupt::Mutex<cell::Cell<u32>> =
+static MICROS_COUNTER: avr_device::interrupt::Mutex<cell::Cell<u32>> =
     avr_device::interrupt::Mutex::new(cell::Cell::new(0));
 
-fn millis_init(tc0: arduino_uno::pac::TC0) {
+fn micros_init(tc0: arduino_uno::pac::TC0) {
     // Configure the timer for the above interval (in CTC mode)
     // and enable its interrupt.
     tc0.tccr0a.write(|w| w.wgm0().ctc());
@@ -45,24 +46,22 @@ fn millis_init(tc0: arduino_uno::pac::TC0) {
 
     // Reset the global millisecond counter
     avr_device::interrupt::free(|cs| {
-        MILLIS_COUNTER.borrow(cs).set(0);
+        MICROS_COUNTER.borrow(cs).set(0);
     });
 }
 
 #[avr_device::interrupt(atmega328p)]
 fn TIMER0_COMPA() {
     avr_device::interrupt::free(|cs| {
-        let counter_cell = MILLIS_COUNTER.borrow(cs);
+        let counter_cell = MICROS_COUNTER.borrow(cs);
         let counter = counter_cell.get();
-        counter_cell.set(counter + MILLIS_INCREMENT);
+        counter_cell.set(counter + MICROS_INCREMENT);
     })
 }
 
-fn millis() -> u32 {
-    avr_device::interrupt::free(|cs| MILLIS_COUNTER.borrow(cs).get())
+fn micros() -> u32 {
+    avr_device::interrupt::free(|cs| MICROS_COUNTER.borrow(cs).get())
 }
-
-// ----------------------------------------------------------------------------
 
 #[arduino_uno::entry]
 fn main() -> ! {
@@ -77,7 +76,7 @@ fn main() -> ! {
         57600.into_baudrate(),
     );
 
-    millis_init(dp.TC0);
+    micros_init(dp.TC0);
 
     // Enable interrupts globally
     unsafe { avr_device::interrupt::enable() };
@@ -86,7 +85,7 @@ fn main() -> ! {
     loop {
         let b = nb::block!(serial.read()).void_unwrap();
 
-        let time = millis();
-        ufmt::uwriteln!(&mut serial, "Got {} after {} ms!\r", b, time).void_unwrap();
+        let time = micros();
+        ufmt::uwriteln!(&mut serial, "Got {} after {} us!\r", b, time).void_unwrap();
     }
 }
