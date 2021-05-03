@@ -1,4 +1,4 @@
-# Ardunio Uno Micros
+# Arduino Uno Micros
 
 A Rust implementation of the [micros](https://www.arduino.cc/reference/en/language/functions/time/micros/) function from Arduino.
 
